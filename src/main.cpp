@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "shared_file.hpp"
 
 struct r8g8b8a8_pixel 
 {
@@ -41,17 +42,27 @@ std::vector<r8g8b8a8_pixel> CreateTestPattern(int w = 1920, int h = 1080)
 	return pixels;
 }
 
-
+struct shared
+{
+	HANDLE share_handle = INVALID_HANDLE_VALUE;
+	BOOL set = false;
+};
 
 int main(int argc, char** argv) 
 {
+	sharing_server<shared> server;
+	if (auto* file = server.get(); file != nullptr) {
+		printf("has allocated the shared file.\n");
+		new (file) shared();
+	}
+
 	//Using SDL just to create a window and a message pump loop because it's easiest
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_Window* window = SDL_CreateWindow("dx11 share", 800, 600, 0);
 	if (!window)
 		return -1;
 	
-	/// I am so glad this is now how this works. SDL2 SysWM API was annoying
+	// I am so glad this is now how this works. SDL2 SysWM API was annoying
 	HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
 	D3D_FEATURE_LEVEL dxLevels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
 	D3D_FEATURE_LEVEL usedLevel = {};
@@ -125,6 +136,15 @@ int main(int argc, char** argv)
 	printf("We got value %lld for handle\n", (long long)share_handle);
 	if (share_handle == INVALID_HANDLE_VALUE)
 		printf("which is invalid :-(\n");
+	else
+	{
+		if (auto* file = server.get(); file)
+		{
+			file->share_handle = share_handle;
+			file->set = TRUE;
+			printf("Has written the HANDLE into the shared file called %s\n", SHARE_NAME);
+		}
+	}
 
 
 	bool running = true;
@@ -146,8 +166,12 @@ int main(int argc, char** argv)
 	}
 
 	SDL_Quit();
+	(void)getchar();
 
-	getchar();
+	if (auto* file = server.get(); file)
+	{
+		::operator delete(file);
+	}
 
 	return 0;
 }
